@@ -1,0 +1,28 @@
+name: Add List to task
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  issue_list:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'task'
+
+    steps:
+      - name: Edit description of issue
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: "update-issue"
+          body: |
+            ### Definition of Done (DoD)
+            - [ ] PR has a clear and descriptive title and description
+            - [ ] PR is linked to this task/issue
+            - [ ] All functional requirements are implemented
+            - [ ] Code compiles without errors
+            - [ ] New unit tests are written and pass
+            - [ ] Existing unit tests pass
+            - [ ] Documentation is updated if needed
+            - [ ] Code review is completed
+            - [ ] PR is approved and merged into `development`
+          update-mode: "replace"

@@ -119,7 +119,7 @@ def test_should_handle_alias_types() -> None:
     assert instance.model.head2.hidden_dims == [128]
 
 
-def test_should_handle_forward_references() -> None:
+def test_should_handle_types_defined_in_any_order() -> None:
     alias_config = """
     types:
         A: B
@@ -132,3 +132,47 @@ def test_should_handle_forward_references() -> None:
 
     instance: Any = model.model_validate({"num_classes": 10})
     assert instance.num_classes == 10
+
+
+def test_should_handle_enum_types() -> None:
+    enum_config = """
+    types:
+        OptimizerType: 
+            - sgd
+            - adam
+            - rmsprop
+    schema:
+        optimizer: OptimizerType
+    """
+
+    model = SchemaParser.parse(enum_config)
+
+    instance: Any = model.model_validate({"optimizer": "adam"})
+    assert instance.optimizer == "adam"
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"optimizer": "invalid_optimizer"})
+
+
+def test_should_handle_inherited_models() -> None:
+    inherited_config = """
+    types:
+        AggregationType: 
+            - mean
+            - sum
+            - max
+        Backbone:
+            n_layers: int
+        GraphSage < Backbone:
+            aggr_type: AggregationType
+    schema:
+        backbone: GraphSage
+    """
+
+    model = SchemaParser.parse(inherited_config)
+
+    instance: Any = model.model_validate(
+        {"backbone": {"n_layers": 3, "aggr_type": "mean"}}
+    )
+    assert instance.backbone.n_layers == 3
+    assert instance.backbone.aggr_type == "mean"

@@ -1,9 +1,14 @@
+import keyword
 import re
+from enum import Enum
+from graphlib import TopologicalSorter
 from types import GenericAlias, UnionType
-from typing import Any, ForwardRef, get_args
+from typing import Any, ForwardRef, TypeAlias, get_args
 
 import yaml
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, Field, create_model
+
+TypeNamespace: TypeAlias = dict[str, Any]
 
 
 class SchemaError(Exception):
@@ -22,114 +27,158 @@ class SchemaParser:
     def parse(cls, config_str: str) -> type[BaseModel]:
         data = yaml.safe_load(config_str) or {}
 
-        custom_types_def = data.get("types", {})
-        root_definition = data.get("schema", data) if custom_types_def else data
+        if "types" in data and "schema" not in data:
+            raise SchemaError("Missing root 'schema' node when 'types' is defined.")
 
-        type_aliases: dict[str, Any] = {}
+        custom_types_def = data.pop("types", {})
+        root_definition = data.pop("schema", data)
 
-        for name in custom_types_def:
-            type_aliases[name] = ForwardRef(name)
+        if not isinstance(root_definition, dict):
+            raise SchemaError("Schema definition must be a dictionary.")
 
-        for name, type_def in custom_types_def.items():
-            # CASE A: If the type_def is a dict, it's a nested Pydantic model
-            if isinstance(type_def, dict):
-                type_aliases[name] = cls._build_model(
-                    name, type_def, type_aliases=type_aliases
-                )
-            # CASE B: If it's a string, it's either a primitive, an alias, or a complex type
-            else:
-                type_aliases[name] = cls._parse_type(
-                    str(type_def), path=f"types.{name}", type_aliases=type_aliases
-                )
-
-        root_model = cls._build_model(
-            "ConfigModel", root_definition, type_aliases=type_aliases
-        )
+        type_aliases = cls._process_custom_types(custom_types_def)
+        root_model = cls._build_model("ConfigModel", root_definition, type_aliases)
         root_model.model_rebuild(_types_namespace=type_aliases)
 
         return root_model
+
+    @classmethod
+    def _process_custom_types(cls, custom_types_def: dict[str, Any]) -> TypeNamespace:
+        type_aliases: TypeNamespace = {}
+        ts: TopologicalSorter[str] = TopologicalSorter()
+        raw_map: dict[str, str] = {}
+
+        for raw_name, type_def in custom_types_def.items():
+            name = raw_name.split("<")[0].strip()
+            deps = []
+
+            if "<" in raw_name:
+                deps.append(raw_name.split("<")[1].strip())
+            if isinstance(type_def, str) and type_def not in cls.PRIMITIVES:
+                deps.append(type_def.strip())
+
+            raw_map[name] = raw_name
+            type_aliases[name] = ForwardRef(name)
+            ts.add(name, *deps)
+
+        try:
+            build_order = list(ts.static_order())
+        except ValueError as e:
+            raise SchemaError(f"Circular dependency detected: {e}")
+
+        for name in build_order:
+            if name in raw_map:
+                raw_name = raw_map[name]
+                cls._build_custom_type(
+                    raw_name, custom_types_def[raw_name], type_aliases
+                )
+
+        return type_aliases
+
+    @classmethod
+    def _build_custom_type(
+        cls, raw_name: str, type_def: Any, aliases: TypeNamespace
+    ) -> None:
+        base_class = BaseModel
+        name = raw_name.strip()
+
+        if "<" in name:
+            name, parent_name = map(str.strip, name.split("<", 1))
+            if parent_name not in aliases:
+                raise SchemaError(
+                    f"Base type '{parent_name}' not defined for '{name}'."
+                )
+            base_class = aliases[parent_name]
+
+        cls._validate_name(name, "custom type")
+
+        if isinstance(type_def, list):
+            if not type_def:
+                raise SchemaError(f"Enum '{name}' cannot be empty.")
+            aliases[name] = Enum(name, {f"V{i}": v for i, v in enumerate(type_def)})
+        elif isinstance(type_def, dict):
+            aliases[name] = cls._build_model(
+                name, type_def, aliases, base_class=base_class
+            )
+        else:
+            aliases[name] = cls._parse_type(str(type_def), f"types.{name}", aliases)
 
     @classmethod
     def _build_model(
         cls,
         model_name: str,
         data: dict[str, Any],
+        type_aliases: TypeNamespace,
         path: str = "",
-        type_aliases: dict[str, Any] | None = None,
+        base_class: type[BaseModel] | Any = BaseModel,
     ) -> type[BaseModel]:
-        if type_aliases is None:
-            type_aliases = {}
-
         model_fields: dict[str, tuple[Any, Any]] = {}
 
         for field_name, value in data.items():
             field_path = f"{path}.{field_name}" if path else field_name
+            cls._validate_name(field_name, "field", field_path)
 
-            # CASE A: Dict -> it's a nested Pydantic Model
             if isinstance(value, dict):
+                nested_name = "".join(w.capitalize() for w in field_name.split("_"))
                 nested_model = cls._build_model(
-                    field_name, value, field_path, type_aliases
+                    nested_name, value, type_aliases, field_path
                 )
-                model_fields[field_name] = (nested_model, ...)
-
-            # CASE B: String -> Parse type and default value
+                model_fields[field_name] = (nested_model, Field(...))
             else:
-                # "type = default" -> type_part = "type", default = "default_part"
-                if isinstance(value, str) and "=" in value:
-                    type_part, default_part = map(str.strip, value.split("=", 1))
-                    default = yaml.safe_load(default_part)
-                # "type" -> type_part = "type", default = ...
+                parts = [p.strip() for p in str(value).split("=", 1)]
+                field_type = cls._parse_type(parts[0], field_path, type_aliases)
+
+                if len(parts) > 1:
+                    parsed_default = yaml.safe_load(parts[1])
+                    model_fields[field_name] = (
+                        field_type,
+                        Field(default=parsed_default),
+                    )
                 else:
-                    type_part = value
-                    default = ...
+                    is_optional = isinstance(field_type, UnionType) and type(
+                        None
+                    ) in get_args(field_type)
+                    model_fields[field_name] = (
+                        field_type,
+                        Field(default=None if is_optional else ...),
+                    )
 
-                field_type = cls._parse_type(str(type_part), field_path, type_aliases)
-
-                if default is ... and cls._is_optional(field_type):
-                    default = None
-
-                model_fields[field_name] = (field_type, default)
-
-        return create_model(model_name, **model_fields)  # type: ignore
+        return create_model(model_name, __base__=base_class, **model_fields)  # type: ignore
 
     @classmethod
     def _parse_type(cls, type_str: str, path: str, type_aliases: dict[str, Any]) -> Any:
         type_str = type_str.strip()
 
-        # optional type: T?
         if type_str.endswith("?"):
-            inner = cls._parse_type(type_str[:-1].strip(), path, type_aliases)
-            return inner | None
+            return cls._parse_type(type_str[:-1], path, type_aliases) | None
 
-        # union type: T1 | T2
         if "|" in type_str:
             parts = [
-                cls._parse_type(p.strip(), path, type_aliases)
-                for p in type_str.split("|")
+                cls._parse_type(p, path, type_aliases) for p in type_str.split("|")
             ]
             result_type = parts[0]
             for t in parts[1:]:
                 result_type |= t
             return result_type
 
-        # list[T]
-        m = re.fullmatch(r"list\[(.+)\]", type_str)
-        if m:
-            inner = cls._parse_type(m.group(1), path, type_aliases)
-            return GenericAlias(list, (inner,))
+        if m := re.fullmatch(r"list\[(.+)\]", type_str):
+            return GenericAlias(
+                list, (cls._parse_type(m.group(1), path, type_aliases),)
+            )
 
-        # primitive
         if type_str in cls.PRIMITIVES:
             return cls.PRIMITIVES[type_str]
 
-        # alias resolving
         if type_str in type_aliases:
             return type_aliases[type_str]
 
-        raise SchemaError(f"Unsupported type '{type_str}' at '{path}'")
+        raise SchemaError(f"Unknown or unsupported type '{type_str}' at '{path}'.")
 
-    @staticmethod
-    def _is_optional(tp: Any) -> bool:
-        if isinstance(tp, UnionType):
-            return type(None) in get_args(tp)
-        return False
+    @classmethod
+    def _validate_name(cls, name: str, context: str, path: str = "") -> None:
+        location = f" at '{path}'" if path else ""
+        if not name.isidentifier() or keyword.iskeyword(name):
+            raise SchemaError(
+                f"Invalid {context} name '{name}'{location}. "
+                "Must be a valid, non-keyword Python identifier without spaces or hyphens."
+            )

@@ -119,7 +119,7 @@ def test_should_handle_alias_types() -> None:
     assert instance.model.head2.hidden_dims == [128]
 
 
-def test_should_handle_forward_references() -> None:
+def test_should_handle_types_defined_in_any_order() -> None:
     alias_config = """
     types:
         A: B
@@ -132,3 +132,118 @@ def test_should_handle_forward_references() -> None:
 
     instance: Any = model.model_validate({"num_classes": 10})
     assert instance.num_classes == 10
+
+
+def test_should_handle_enum_types() -> None:
+    enum_config = """
+    types:
+        OptimizerType: 
+            - sgd
+            - adam
+            - rmsprop
+        LearningRateType:
+            - 0.001
+            - 0.01
+            - 0.1
+    schema:
+        optimizer: OptimizerType
+        learning_rate: LearningRateType
+    """
+
+    model = SchemaParser.parse(enum_config)
+
+    instance: Any = model.model_validate({"optimizer": "adam", "learning_rate": 0.01})
+    assert instance.optimizer.value == "adam"
+    assert instance.learning_rate.value == 0.01
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"optimizer": "invalid_optimizer", "learning_rate": 0.01})
+
+    with pytest.raises(ValidationError):
+        model.model_validate({"optimizer": "sgd", "learning_rate": 0.05})
+
+
+def test_should_handle_inherited_models() -> None:
+    inherited_config = """
+    types:
+        AggregationType: 
+            - mean
+            - sum
+            - max
+        Backbone:
+            n_layers: int
+        GraphSage < Backbone:
+            aggr_type: AggregationType
+    schema:
+        backbone: GraphSage
+    """
+
+    model = SchemaParser.parse(inherited_config)
+
+    instance: Any = model.model_validate(
+        {"backbone": {"n_layers": 3, "aggr_type": "mean"}}
+    )
+    assert instance.backbone.n_layers == 3
+    assert instance.backbone.aggr_type.value == "mean"
+
+
+def test_should_handle_inheritance_with_forward_refs() -> None:
+    config = """
+    types:
+        A < B:
+            a: int
+        B < C:
+            b: int
+        C:
+            c: int
+    schema:
+        model: A
+    """
+
+    model = SchemaParser.parse(config)
+
+    instance: Any = model.model_validate(
+        {
+            "model": {
+                "a": 1,
+                "b": 2,
+                "c": 3,
+            }
+        }
+    )
+
+    assert instance.model.a == 1
+    assert instance.model.b == 2
+    assert instance.model.c == 3
+
+
+def test_should_raise_error_on_circular_inheritance_dependency() -> None:
+    config = """
+    types:
+        A < B:
+            a: int
+        B < A:
+            b: int
+    schema:
+        model: A
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        SchemaParser.parse(config)
+
+    assert "Circular dependency" in str(exc_info.value)
+
+
+def test_should_raise_error_on_circular_alias_dependency() -> None:
+    config = """
+    types:
+        A: B
+        B: A
+    schema:
+        value: A
+    """
+
+    with pytest.raises(SchemaError) as exc_info:
+        SchemaParser.parse(config)
+
+    assert "Circular" in str(exc_info.value) or "unresolved" in str(exc_info.value)

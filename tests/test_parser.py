@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,8 +17,13 @@ training:
 """
 
 
-def test_should_generate_pydantic_model_from_yaml_string() -> None:
-    model = SchemaParser.parse(config)
+@pytest.fixture()
+def parser() -> SchemaParser:
+    return SchemaParser()
+
+
+def test_should_generate_pydantic_model_from_yaml_string(parser: SchemaParser) -> None:
+    model = parser.parse(config)
     input_data = {
         "training": {"batch_size": 64},
         "model": {"hidden_dims": [128, 64]},
@@ -34,7 +40,7 @@ def test_should_generate_pydantic_model_from_yaml_string() -> None:
     assert instance.training.shuffle is True
 
 
-def test_should_raise_schema_error_for_unsupported_type() -> None:
+def test_should_raise_schema_error_for_unsupported_type(parser: SchemaParser) -> None:
     invalid_config = """
     training:
         early_stopping:
@@ -42,7 +48,7 @@ def test_should_raise_schema_error_for_unsupported_type() -> None:
     """
 
     with pytest.raises(SchemaError) as exc_info:
-        SchemaParser.parse(invalid_config)
+        parser.parse(invalid_config)
 
     assert "training.early_stopping.patience" in str(exc_info.value)
 
@@ -67,19 +73,21 @@ def test_should_raise_schema_error_for_unsupported_type() -> None:
         ),
     ],
 )
-def test_should_raise_validation_error(input_data: dict[str, Any]) -> None:
-    model = SchemaParser.parse(config)
+def test_should_raise_validation_error(
+    input_data: dict[str, Any], parser: SchemaParser
+) -> None:
+    model = parser.parse(config)
 
     with pytest.raises(ValidationError):
         model.model_validate(input_data)
 
 
-def test_should_handle_union_types() -> None:
+def test_should_handle_union_types(parser: SchemaParser) -> None:
     union_config = """
     dropout: float?
     """
 
-    model = SchemaParser.parse(union_config)
+    model = parser.parse(union_config)
 
     instance1: Any = model.model_validate({"dropout": 0.2})
     assert instance1.dropout == 0.2
@@ -91,7 +99,7 @@ def test_should_handle_union_types() -> None:
         model.model_validate({"dropout": "invalid"})
 
 
-def test_should_handle_alias_types() -> None:
+def test_should_handle_alias_types(parser: SchemaParser) -> None:
     alias_config = """
     types:
         ClassifierHead:
@@ -103,7 +111,7 @@ def test_should_handle_alias_types() -> None:
             head2: ClassifierHead
     """
 
-    model = SchemaParser.parse(alias_config)
+    model = parser.parse(alias_config)
 
     instance: Any = model.model_validate(
         {
@@ -119,7 +127,7 @@ def test_should_handle_alias_types() -> None:
     assert instance.model.head2.hidden_dims == [128]
 
 
-def test_should_handle_types_defined_in_any_order() -> None:
+def test_should_handle_types_defined_in_any_order(parser: SchemaParser) -> None:
     alias_config = """
     types:
         A: B
@@ -128,13 +136,13 @@ def test_should_handle_types_defined_in_any_order() -> None:
         num_classes: A
     """
 
-    model = SchemaParser.parse(alias_config)
+    model = parser.parse(alias_config)
 
     instance: Any = model.model_validate({"num_classes": 10})
     assert instance.num_classes == 10
 
 
-def test_should_handle_enum_types() -> None:
+def test_should_handle_enum_types(parser: SchemaParser) -> None:
     enum_config = """
     types:
         OptimizerType: 
@@ -150,7 +158,7 @@ def test_should_handle_enum_types() -> None:
         learning_rate: LearningRateType
     """
 
-    model = SchemaParser.parse(enum_config)
+    model = SchemaParser().parse(enum_config)
 
     instance: Any = model.model_validate({"optimizer": "adam", "learning_rate": 0.01})
     assert instance.optimizer.value == "adam"
@@ -163,7 +171,7 @@ def test_should_handle_enum_types() -> None:
         model.model_validate({"optimizer": "sgd", "learning_rate": 0.05})
 
 
-def test_should_handle_inherited_models() -> None:
+def test_should_handle_inherited_models(parser: SchemaParser) -> None:
     inherited_config = """
     types:
         AggregationType: 
@@ -178,7 +186,7 @@ def test_should_handle_inherited_models() -> None:
         backbone: GraphSage
     """
 
-    model = SchemaParser.parse(inherited_config)
+    model = parser.parse(inherited_config)
 
     instance: Any = model.model_validate(
         {"backbone": {"n_layers": 3, "aggr_type": "mean"}}
@@ -187,7 +195,7 @@ def test_should_handle_inherited_models() -> None:
     assert instance.backbone.aggr_type.value == "mean"
 
 
-def test_should_handle_inheritance_with_forward_refs() -> None:
+def test_should_handle_inheritance_with_forward_refs(parser: SchemaParser) -> None:
     config = """
     types:
         A < B:
@@ -200,7 +208,7 @@ def test_should_handle_inheritance_with_forward_refs() -> None:
         model: A
     """
 
-    model = SchemaParser.parse(config)
+    model = parser.parse(config)
 
     instance: Any = model.model_validate(
         {
@@ -217,7 +225,9 @@ def test_should_handle_inheritance_with_forward_refs() -> None:
     assert instance.model.c == 3
 
 
-def test_should_raise_error_on_circular_inheritance_dependency() -> None:
+def test_should_raise_error_on_circular_inheritance_dependency(
+    parser: SchemaParser,
+) -> None:
     config = """
     types:
         A < B:
@@ -229,12 +239,12 @@ def test_should_raise_error_on_circular_inheritance_dependency() -> None:
     """
 
     with pytest.raises(SchemaError) as exc_info:
-        SchemaParser.parse(config)
+        parser.parse(config)
 
     assert "Circular dependency" in str(exc_info.value)
 
 
-def test_should_raise_error_on_circular_alias_dependency() -> None:
+def test_should_raise_error_on_circular_alias_dependency(parser: SchemaParser) -> None:
     config = """
     types:
         A: B
@@ -244,6 +254,19 @@ def test_should_raise_error_on_circular_alias_dependency() -> None:
     """
 
     with pytest.raises(SchemaError) as exc_info:
-        SchemaParser.parse(config)
+        parser.parse(config)
 
     assert "Circular" in str(exc_info.value) or "unresolved" in str(exc_info.value)
+
+
+def test_should_handle_external_types(parser: SchemaParser) -> None:
+    config = """
+    types:
+        Path: pathlib:Path
+    schema:
+        path: Path
+    """
+    model = parser.parse(config)
+
+    instance: Any = model.model_validate({"path": "/some/path"})
+    assert instance.path == Path("/some/path")

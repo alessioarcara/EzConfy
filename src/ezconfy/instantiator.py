@@ -39,62 +39,64 @@ class Instantiator:
 
         return set()
 
-    def _resolve_path(self, path: str, context: dict[str, Any]) -> Any:
+    def _resolve_path(self, path: str, resolved_config: dict[str, Any]) -> Any:
         """
         Navigates through a resolved object using dot-notation.
         """
-        # Split the path into parts separated by dots
         parts = path.split(".")
-        # Start with the top-level variable from the context
-        current = context[parts[0]]
+        current = resolved_config[parts[0]]
 
-        # Iterate through the remaining parts to resolve attributes and method calls
         for part in parts[1:]:
             is_method = part.endswith("()")
             attr = part[:-2] if is_method else part
 
-            # Access dictionary key if current is a dict
             if isinstance(current, dict) and attr in current:
                 current = current[attr]
-            # Otherwise access as an attribute if it exists
             elif hasattr(current, attr):
                 current = getattr(current, attr)
-            # Raise an error if neither works
             else:
                 raise AttributeError(f"Cannot resolve '{attr}' on {current}")
 
-            # Call the method if this part is a method
             if is_method and callable(current):
                 current = current()
 
         return current
 
-    def _instantiate_obj(self, node: Any, context: dict[str, Any]) -> Any:
+    def _instantiate_obj(self, node: Any, resolved_config: dict[str, Any]) -> Any:
         if isinstance(node, str) and (m := PLACEHOLDER_PATTERN.fullmatch(node)):
-            return self._resolve_path(m.group(1), context)
+            return self._resolve_path(m.group(1), resolved_config)
 
         if isinstance(node, dict):
             if "_target_type_" in node:
                 cls: Any = self._loader.load_class(node["_target_type_"])
                 raw_args = node.get("_init_args_", {})
-                resolved_args = {k: self._instantiate_obj(v, context) for k, v in raw_args.items()}
-                return cls(**resolved_args)
+                resolved_args = {k: self._instantiate_obj(v, resolved_config) for k, v in raw_args.items()}
 
-            return {k: self._instantiate_obj(v, context) for k, v in node.items()}
+                # Determine which method to use for instantiation
+                init_method_name = node.get("_init_method_", "__init__")
+                if init_method_name == "__init__":
+                    return cls(**resolved_args)
+                else:
+                    init_method = getattr(cls, init_method_name)
+                    if not callable(init_method):
+                        raise TypeError(f"'{init_method_name}' is not callable on {cls}")
+                    return init_method(**resolved_args)
+
+            return {k: self._instantiate_obj(v, resolved_config) for k, v in node.items()}
 
         if isinstance(node, list):
-            return [self._instantiate_obj(i, context) for i in node]
+            return [self._instantiate_obj(i, resolved_config) for i in node]
 
         return node
 
     def _instantiate_topologically(self, config: dict[str, Any], graph: dict[str, set[str]]) -> dict[str, Any]:
-        resolved_context: dict[str, Any] = {}
+        resolved_config: dict[str, Any] = {}
         sorter = TopologicalSorter(graph)
 
         try:
             for key in sorter.static_order():
-                resolved_context[key] = self._instantiate_obj(config[key], resolved_context)
+                resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
         except CycleError as e:
             raise ValueError(f"Circular reference detected in configuration: {e}") from e
 
-        return resolved_context
+        return resolved_config

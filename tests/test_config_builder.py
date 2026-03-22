@@ -222,3 +222,34 @@ optimizer: {module_file}:Optimizer
     assert cfg.model.__class__.__name__ == "Model"
     assert cfg.optimizer.__class__.__name__ == "Optimizer"
     assert cfg.optimizer.params == [1, 2, 3]
+
+
+def test_instantiate_with_custom_init_method(tmp_path: Path) -> None:
+    module_content = """
+class Bert:
+    @classmethod
+    def from_pretrained(cls, model_name: str):
+        instance = cls()
+        instance.model_name = model_name
+        return instance
+"""
+    module_file = _write_temp_yaml(tmp_path, module_content, "mock.py")
+
+    config = f"""
+bert:
+    _target_type_: {module_file}:Bert
+    _init_method_: from_pretrained
+    _init_args_:
+        model_name: bert-base-uncased
+"""
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    schema = f"""
+bert: {module_file}:Bert
+"""
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
+
+    cfg: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+
+    assert cfg.bert.__class__.__name__ == "Bert"
+    assert cfg.bert.model_name == "bert-base-uncased"

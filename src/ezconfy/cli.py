@@ -1,5 +1,5 @@
 from pathlib import Path
-import types
+from types import UnionType
 from typing import Any, Union, get_args, get_origin
 
 import typer
@@ -12,7 +12,7 @@ app = typer.Typer()
 
 def _is_union(t: object) -> bool:
     origin = get_origin(t)
-    return origin is Union or isinstance(t, types.UnionType)
+    return origin is Union or isinstance(t, UnionType)
 
 
 def resolve_type(annotation: type[Any]) -> tuple[str, set[tuple[str, str]]]:

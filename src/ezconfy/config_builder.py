@@ -8,7 +8,7 @@ from ezconfy.instantiator import Instantiator
 from ezconfy.io import read_yaml
 from ezconfy.schema_parser import SchemaParser
 
-pathLike = str | Path
+PathLike = str | Path
 
 
 class ConfigBuilder:
@@ -33,9 +33,9 @@ class ConfigBuilder:
     @classmethod
     def from_files(
         cls,
-        config_paths: pathLike | list[pathLike],
+        config_paths: PathLike | list[PathLike],
         overrides: dict[str, Any] | None = None,
-        schema_path: pathLike | None = None,
+        schema_path: PathLike | None = None,
     ) -> BaseModel | dict[str, Any]:
         """Build configuration from one or more YAML files with optional overrides and schema."""
         # Normalize paths
@@ -45,9 +45,9 @@ class ConfigBuilder:
 
         # Merge all config files
         merged_config: dict[str, Any] = {}
-        logger.info(f"📄 Building config from {len(paths)} file(s):")
+        logger.info(f"Building config from {len(paths)} file(s):")
         for path in paths:
-            logger.info(f"\t-> Loading: {path}")
+            logger.info(f"  -> Loading: {path}")
             merged_config = cls._deep_merge(merged_config, read_yaml(path))
 
         # Apply overrides
@@ -60,7 +60,7 @@ class ConfigBuilder:
             try:
                 schema_yaml = Path(schema_path).read_text(encoding="utf-8")
             except Exception as e:
-                logger.error(f"❌ Failed to read schema file {schema_path}: {e}")
+                logger.error(f"Failed to read schema file {schema_path}: {e}")
                 raise
 
         # Instantiate objects
@@ -75,5 +75,5 @@ class ConfigBuilder:
         try:
             return builder.schema_model.model_validate(instantiated)
         except ValidationError as e:
-            logger.error(f"❌ Configuration validation failed:\n{e}")
+            logger.error(f"Configuration validation failed:\n{e}")
             raise ValueError(f"Configuration validation failed: {e}") from e

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ezconfy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,11 +13,9 @@ authors = [
     { name = "Francesco Baiocchi", email = "francesco.baiocchi2@studio.unibo.it" },
 ]
 dependencies = [
-    "hatch>=1.16.5",
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
-    "twine>=6.2.0",
     "typer>=0.24.1",
 ]
 
@@ -48,4 +46,4 @@ line-length = 120
 target-version = "py311"
 
 [project.scripts]
-ezconfy = "ezconfy.schema_watcher:app"
+ezconfy = "ezconfy.cli:app"

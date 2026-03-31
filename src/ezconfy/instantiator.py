@@ -39,7 +39,10 @@ class Instantiator:
             deps = {p.split(".")[0] for p in self._find_placeholders(node)}
             missing = deps - nodes
             if missing:
-                raise InstantiationError(f"Node '{name}' is missing dependencies: {missing}")
+                raise InstantiationError(
+                    f"Config key '{name}' references undefined keys {missing}. "
+                    f"Available keys: {list(nodes)}"
+                )
             graph[name] = deps
         return graph
 
@@ -81,17 +84,28 @@ class Instantiator:
                 10
         """
 
+        def _obj_repr(obj: Any) -> str:
+            if isinstance(obj, dict):
+                return f"dict with keys {list(obj.keys())}"
+            return type(obj).__name__
+
         def _get_attr(obj: Any, name: str) -> Any:
             if isinstance(obj, dict):
                 if name in obj:
                     return obj[name]
-                raise InstantiationError(f"Key '{name}' not found in dict {obj}")
+                raise InstantiationError(f"Key '{name}' not found in {_obj_repr(obj)}")
             if hasattr(obj, name):
                 return getattr(obj, name)
-            raise InstantiationError(f"Cannot resolve '{name}' on {obj}")
+            raise InstantiationError(f"Cannot resolve '{name}' on {_obj_repr(obj)}")
 
         parts = path.split(".")
-        current = resolved_config[parts[0]]
+        try:
+            current = resolved_config[parts[0]]
+        except KeyError:
+            raise InstantiationError(
+                f"Placeholder '${{{path}}}' references unknown key '{parts[0]}'. "
+                f"Available keys: {list(resolved_config.keys())}"
+            )
 
         for part in parts[1:]:
             is_method = part.endswith("()")
@@ -112,19 +126,28 @@ class Instantiator:
 
         if isinstance(node, dict):
             if "_target_type_" in node:
-                cls: Any = self._loader.load_class(node["_target_type_"])
+                target = node["_target_type_"]
+                cls: Any = self._loader.load_class(target)
                 raw_args = node.get("_init_args_", {})
                 resolved_args = {k: self._instantiate_obj(v, resolved_config) for k, v in raw_args.items()}
 
                 # Determine which method to use for instantiation
                 init_method_name = node.get("_init_method_", "__init__")
                 if init_method_name == "__init__":
-                    return cls(**resolved_args)
+                    try:
+                        return cls(**resolved_args)
+                    except Exception as e:
+                        raise InstantiationError(f"Failed to instantiate '{target}': {e}") from e
                 else:
                     init_method = getattr(cls, init_method_name)
                     if not callable(init_method):
                         raise InstantiationError(f"'{init_method_name}' is not callable on {cls}")
-                    return init_method(**resolved_args)
+                    try:
+                        return init_method(**resolved_args)
+                    except Exception as e:
+                        raise InstantiationError(
+                            f"Failed to instantiate '{target}' via '{init_method_name}': {e}"
+                        ) from e
 
             return {k: self._instantiate_obj(v, resolved_config) for k, v in node.items()}
 
@@ -139,7 +162,14 @@ class Instantiator:
 
         try:
             for key in sorter.static_order():
-                resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
+                try:
+                    resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
+                except InstantiationError:
+                    raise
+                except Exception as e:
+                    raise InstantiationError(
+                        f"Unexpected error while processing config key '{key}': {e}"
+                    ) from e
         except CycleError as e:
             raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
 

@@ -1,0 +1,12 @@
+types:
+  Path: pathlib:Path
+  Model: int?
+
+schema:
+  dataset:
+    root: Path
+    name: str
+
+  model:
+    type: str
+    pretrained: bool

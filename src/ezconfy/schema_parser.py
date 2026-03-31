@@ -131,7 +131,12 @@ class SchemaParser:
                 field_type = self._parse_type(parts[0], field_path)
 
                 if len(parts) > 1:
-                    parsed_default = yaml.safe_load(parts[1])
+                    try:
+                        parsed_default = yaml.safe_load(parts[1])
+                    except yaml.YAMLError as e:
+                        raise SchemaError(
+                            f"Invalid default value '{parts[1]}' for field '{field_path}': {e}"
+                        ) from e
                     model_fields[field_name] = (
                         field_type,
                         Field(default=parsed_default),

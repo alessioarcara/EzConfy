@@ -60,8 +60,13 @@ class ConfigBuilder:
         try:
             return self.schema_model.model_validate(instantiated)
         except ValidationError as e:
-            logger.error(f"Configuration validation failed:\n{e}")
-            raise InstantiationError(f"Configuration validation failed: {e}") from e
+            field_errors = "; ".join(
+                f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}"
+                for err in e.errors()
+            )
+            msg = f"Configuration validation failed ({e.error_count()} error(s)): {field_errors}"
+            logger.error(msg)
+            raise InstantiationError(msg) from e
 
     @classmethod
     def from_files(

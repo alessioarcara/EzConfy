@@ -8,17 +8,14 @@ from typing import Any, ForwardRef, TypeAlias, cast, get_args
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from ezconfy.exceptions import SchemaError
 from ezconfy.module_loader import ModuleLoader
 
 TypeNamespace: TypeAlias = dict[str, Any]
 
 
-class SchemaError(Exception):
-    pass
-
-
 class SchemaParser:
-    def __init__(self) -> None:
+    def __init__(self, module_loader: ModuleLoader | None = None) -> None:
         self.primitives: dict[str, type] = {
             "int": int,
             "float": float,
@@ -27,7 +24,7 @@ class SchemaParser:
         }
 
         self.type_aliases: TypeNamespace = {}
-        self.module_loader = ModuleLoader()
+        self.module_loader = module_loader if module_loader is not None else ModuleLoader()
 
     def parse(self, config_str: str) -> type[BaseModel]:
         self.type_aliases.clear()

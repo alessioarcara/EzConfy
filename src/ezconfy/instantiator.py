@@ -2,14 +2,15 @@ import re
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
+from ezconfy.exceptions import InstantiationError
 from ezconfy.module_loader import ModuleLoader
 
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([\w\.\(\)]+)\}")
 
 
 class Instantiator:
-    def __init__(self) -> None:
-        self._loader = ModuleLoader()
+    def __init__(self, module_loader: ModuleLoader | None = None) -> None:
+        self._loader = module_loader if module_loader is not None else ModuleLoader()
 
     def __call__(self, config: dict[str, Any]) -> dict[str, Any]:
         dep_graph = self._build_dependency_graph(config)
@@ -38,7 +39,7 @@ class Instantiator:
             deps = {p.split(".")[0] for p in self._find_placeholders(node)}
             missing = deps - nodes
             if missing:
-                raise KeyError(f"Node '{name}' is missing dependencies: {missing}")
+                raise InstantiationError(f"Node '{name}' is missing dependencies: {missing}")
             graph[name] = deps
         return graph
 
@@ -84,10 +85,10 @@ class Instantiator:
             if isinstance(obj, dict):
                 if name in obj:
                     return obj[name]
-                raise AttributeError(f"Key '{name}' not found in dict {obj}")
+                raise InstantiationError(f"Key '{name}' not found in dict {obj}")
             if hasattr(obj, name):
                 return getattr(obj, name)
-            raise AttributeError(f"Cannot resolve '{name}' on {obj}")
+            raise InstantiationError(f"Cannot resolve '{name}' on {obj}")
 
         parts = path.split(".")
         current = resolved_config[parts[0]]
@@ -100,7 +101,7 @@ class Instantiator:
 
             if is_method:
                 if not callable(current):
-                    raise TypeError(f"'{name}' is not callable on {current}")
+                    raise InstantiationError(f"'{name}' is not callable on {current}")
                 current = current()
 
         return current
@@ -122,7 +123,7 @@ class Instantiator:
                 else:
                     init_method = getattr(cls, init_method_name)
                     if not callable(init_method):
-                        raise TypeError(f"'{init_method_name}' is not callable on {cls}")
+                        raise InstantiationError(f"'{init_method_name}' is not callable on {cls}")
                     return init_method(**resolved_args)
 
             return {k: self._instantiate_obj(v, resolved_config) for k, v in node.items()}
@@ -140,6 +141,6 @@ class Instantiator:
             for key in sorter.static_order():
                 resolved_config[key] = self._instantiate_obj(config[key], resolved_config)
         except CycleError as e:
-            raise ValueError(f"Circular reference detected in configuration: {e}") from e
+            raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
 
         return resolved_config

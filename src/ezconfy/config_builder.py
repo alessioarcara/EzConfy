@@ -4,8 +4,10 @@ from typing import Any
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 
+from ezconfy.exceptions import InstantiationError
 from ezconfy.instantiator import Instantiator
 from ezconfy.io import read_yaml
+from ezconfy.module_loader import ModuleLoader
 from ezconfy.schema_parser import SchemaParser
 
 PathLike = str | Path
@@ -13,10 +15,11 @@ PathLike = str | Path
 
 class ConfigBuilder:
     def __init__(self, schema_yaml: str | None = None) -> None:
-        self.instantiator = Instantiator()
+        shared_loader = ModuleLoader()
+        self.instantiator = Instantiator(module_loader=shared_loader)
         self.schema_model: type[BaseModel] | None = None
         if schema_yaml:
-            parser = SchemaParser()
+            parser = SchemaParser(module_loader=shared_loader)
             self.schema_model = parser.parse(schema_yaml)
 
     @staticmethod
@@ -30,6 +33,36 @@ class ConfigBuilder:
                 merged[k] = v
         return merged
 
+    def build(
+        self,
+        config_paths: PathLike | list[PathLike],
+        overrides: dict[str, Any] | None = None,
+    ) -> BaseModel | dict[str, Any]:
+        """Build configuration from one or more YAML files using this builder's schema."""
+        paths = [Path(p) for p in (config_paths if isinstance(config_paths, list) else [config_paths])]
+        if not paths:
+            raise ValueError("No configuration paths provided.")
+
+        merged_config: dict[str, Any] = {}
+        logger.info(f"Building config from {len(paths)} file(s):")
+        for path in paths:
+            logger.info(f"  -> Loading: {path}")
+            merged_config = self._deep_merge(merged_config, read_yaml(path))
+
+        if overrides:
+            merged_config = self._deep_merge(merged_config, overrides)
+
+        instantiated = self.instantiator(merged_config)
+
+        if self.schema_model is None:
+            return instantiated
+
+        try:
+            return self.schema_model.model_validate(instantiated)
+        except ValidationError as e:
+            logger.error(f"Configuration validation failed:\n{e}")
+            raise InstantiationError(f"Configuration validation failed: {e}") from e
+
     @classmethod
     def from_files(
         cls,
@@ -38,23 +71,6 @@ class ConfigBuilder:
         schema_path: PathLike | None = None,
     ) -> BaseModel | dict[str, Any]:
         """Build configuration from one or more YAML files with optional overrides and schema."""
-        # Normalize paths
-        paths = [Path(p) for p in (config_paths if isinstance(config_paths, list) else [config_paths])]
-        if not paths:
-            raise ValueError("No configuration paths provided.")
-
-        # Merge all config files
-        merged_config: dict[str, Any] = {}
-        logger.info(f"Building config from {len(paths)} file(s):")
-        for path in paths:
-            logger.info(f"  -> Loading: {path}")
-            merged_config = cls._deep_merge(merged_config, read_yaml(path))
-
-        # Apply overrides
-        if overrides:
-            merged_config = cls._deep_merge(merged_config, overrides)
-
-        # Load schema if provided
         schema_yaml: str | None = None
         if schema_path:
             try:
@@ -63,17 +79,5 @@ class ConfigBuilder:
                 logger.error(f"Failed to read schema file {schema_path}: {e}")
                 raise
 
-        # Instantiate objects
         builder = cls(schema_yaml=schema_yaml)
-        instantiated = builder.instantiator(merged_config)  # pass dict directly
-
-        # If no schema, return raw instantiated dict
-        if builder.schema_model is None:
-            return instantiated
-
-        # Validate with Pydantic schema
-        try:
-            return builder.schema_model.model_validate(instantiated)
-        except ValidationError as e:
-            logger.error(f"Configuration validation failed:\n{e}")
-            raise ValueError(f"Configuration validation failed: {e}") from e
+        return builder.build(config_paths, overrides=overrides)

@@ -40,8 +40,7 @@ class Instantiator:
             missing = deps - nodes
             if missing:
                 raise InstantiationError(
-                    f"Config key '{name}' references undefined keys {missing}. "
-                    f"Available keys: {list(nodes)}"
+                    f"Config key '{name}' references undefined keys {missing}. Available keys: {list(nodes)}"
                 )
             graph[name] = deps
         return graph
@@ -167,9 +166,7 @@ class Instantiator:
                 except InstantiationError:
                     raise
                 except Exception as e:
-                    raise InstantiationError(
-                        f"Unexpected error while processing config key '{key}': {e}"
-                    ) from e
+                    raise InstantiationError(f"Unexpected error while processing config key '{key}': {e}") from e
         except CycleError as e:
             raise InstantiationError(f"Circular reference detected in configuration: {e}") from e
 

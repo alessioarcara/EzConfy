@@ -134,9 +134,7 @@ class SchemaParser:
                     try:
                         parsed_default = yaml.safe_load(parts[1])
                     except yaml.YAMLError as e:
-                        raise SchemaError(
-                            f"Invalid default value '{parts[1]}' for field '{field_path}': {e}"
-                        ) from e
+                        raise SchemaError(f"Invalid default value '{parts[1]}' for field '{field_path}': {e}") from e
                     model_fields[field_name] = (
                         field_type,
                         Field(default=parsed_default),
@@ -151,7 +149,7 @@ class SchemaParser:
         model = create_model(
             model_name,
             __base__=base_class,
-            __config__=ConfigDict(arbitrary_types_allowed=True),
+            __config__=ConfigDict(arbitrary_types_allowed=True, extra="allow"),
             **model_fields,
         )  # type: ignore
 

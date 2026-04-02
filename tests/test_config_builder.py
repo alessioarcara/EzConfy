@@ -253,3 +253,22 @@ bert: {module_file}:Bert
 
     assert cfg.bert.__class__.__name__ == "Bert"
     assert cfg.bert.model_name == "bert-base-uncased"
+
+
+def test_extra_config_fields_preserved_when_schema_is_provided(tmp_path: Path) -> None:
+    schema = """
+lr: float
+"""
+    config = """
+lr: 0.001
+wd: 0.0001
+"""
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    cfg: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+
+    assert cfg.lr == 0.001
+    assert cfg.wd == 0.0001
+    print(type(cfg.lr))
+    print(type(cfg.wd))

@@ -4,7 +4,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from ezconfy.schema_parser import SchemaError, SchemaParser
+from ezconfy.exceptions import SchemaError
+from ezconfy.schema_parser import SchemaParser
 
 config = """
 wandb_run_name: str

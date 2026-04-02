@@ -31,6 +31,19 @@ experiment:
     lr: float = 0.001
 """
 
+enum_schema = """
+types:
+  OptimizerType:
+    - sgd
+    - adam
+  LearningRateType:
+    - 0.001
+    - 0.01
+schema:
+  optimizer: OptimizerType
+  learning_rate: LearningRateType
+"""
+
 
 @pytest.fixture()
 def parser() -> SchemaParser:
@@ -119,3 +132,25 @@ def test_deeply_nested_schema_generates_all_levels(tmp_path: Path, parser: Schem
     assert experiment_pos < config_pos
     assert model_pos < experiment_pos
     assert optimizer_pos < experiment_pos
+
+
+def test_generated_code_supports_enum_types(tmp_path: Path, parser: SchemaParser) -> None:
+    output_file, code = _generate(enum_schema, tmp_path, parser)
+
+    assert "from enum import Enum" in code
+    assert "class OptimizerType(Enum):" in code
+    assert "class LearningRateType(Enum):" in code
+    assert "optimizer: OptimizerType = Field(...)" in code
+    assert "learning_rate: LearningRateType = Field(...)" in code
+
+    spec = importlib.util.spec_from_file_location("generated_config_enums", output_file)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["generated_config_enums"] = module
+    spec.loader.exec_module(module)
+
+    ConfigModel = getattr(module, "ConfigModel")
+    instance: Any = ConfigModel.model_validate({"optimizer": "adam", "learning_rate": 0.01})
+
+    assert instance.optimizer.value == "adam"
+    assert instance.learning_rate.value == 0.01

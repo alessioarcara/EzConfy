@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from ezconfy.cli import run_generation
+from ezconfy.codegen import run_generation
 from ezconfy.schema_parser import SchemaParser
 
 flat_schema = """

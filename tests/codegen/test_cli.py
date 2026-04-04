@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from ezconfy.codegen import run_generation
-from ezconfy.schema_parser import SchemaParser
+from ezconfy.core.schema_parser import SchemaParser
 
 flat_schema = """
 wandb_run_name: str
@@ -154,3 +154,17 @@ def test_generated_code_supports_enum_types(tmp_path: Path, parser: SchemaParser
 
     assert instance.optimizer.value == "adam"
     assert instance.learning_rate.value == 0.01
+
+
+def test_generated_code_with_dynamic_types(tmp_path: Path, parser: SchemaParser) -> None:
+    module_file = tmp_path / "my_model.py"
+    module_file.write_text(
+        "class MyModel:\n    def __init__(self):\n        pass\n",
+        encoding="utf-8",
+    )
+
+    schema = f"model: {module_file}:MyModel\n"
+    _, code = _generate(schema, tmp_path, parser)
+
+    assert "from my_model import MyModel" in code
+    assert "model: MyModel = Field(...)" in code

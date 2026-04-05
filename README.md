@@ -4,7 +4,7 @@
 
 ## Why ezconfy?
 
-EzConfy is designed for ML/data science projects that want **typed, validated configs with automatic object wiring** — without the complexity of a full framework like Hydra.
+EzConfy is designed for ML projects that want **typed, validated configs with automatic object wiring** - without the complexity of a full framework like Hydra.
 
 ## Installation
 

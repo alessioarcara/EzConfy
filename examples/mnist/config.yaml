@@ -1,0 +1,71 @@
+# ---- Hyperparameters ----
+epochs: 10
+batch_size: 64
+lr: 0.001
+device: "cpu"
+num_classes: 10
+
+# ---- Data ----
+data_root: "./data"
+
+transform:
+  _target_type_: torchvision.transforms:Compose
+  _init_args_:
+    transforms:
+      - _target_type_: torchvision.transforms:ToTensor
+      - _target_type_: torchvision.transforms:Normalize
+        _init_args_:
+          mean: [0.1307]
+          std: [0.3081]
+
+train_dataset:
+  _target_type_: torchvision.datasets:MNIST
+  _init_args_:
+    root: ${data_root}
+    train: true
+    download: true
+    transform: ${transform}
+
+test_dataset:
+  _target_type_: torchvision.datasets:MNIST
+  _init_args_:
+    root: ${data_root}
+    train: false
+    download: true
+    transform: ${transform}
+
+train_loader:
+  _target_type_: torch.utils.data:DataLoader
+  _init_args_:
+    dataset: ${train_dataset}
+    batch_size: ${batch_size}
+    shuffle: true
+
+test_loader:
+  _target_type_: torch.utils.data:DataLoader
+  _init_args_:
+    dataset: ${test_dataset}
+    batch_size: ${batch_size}
+
+# ---- Model ----
+model:
+  _target_type_: examples/mnist/nn.py:MLP
+  _init_args_:
+    hidden_dims: [256, 128]
+    dropout: 0.3
+    num_classes: ${num_classes}
+
+criterion:
+  _target_type_: torch.nn:CrossEntropyLoss
+
+optimizer:
+  _target_type_: torch.optim:Adam
+  _init_args_:
+    params: ${model.parameters()}
+    lr: ${lr}
+
+metric:
+  _target_type_: torchmetrics:Accuracy
+  _init_args_:
+    task: multiclass
+    num_classes: ${num_classes}

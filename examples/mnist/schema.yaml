@@ -1,0 +1,21 @@
+types:
+  TorchModule: torch.nn:Module
+  TorchDataLoader: torch.utils.data:DataLoader
+  MNIST: torchvision.datasets:MNIST
+
+schema:
+  epochs: int
+  batch_size: int
+  lr: float
+  device: str = "cpu"
+  num_classes: int
+  data_root: str
+  transform: torchvision.transforms:Compose
+  train_dataset: MNIST
+  test_dataset: MNIST
+  train_loader: TorchDataLoader
+  test_loader: TorchDataLoader
+  model: TorchModule
+  criterion: TorchModule
+  optimizer: torch.optim:Optimizer
+  metric: torchmetrics:Metric

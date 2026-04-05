@@ -46,6 +46,7 @@ packages = ["src/ezconfy"]
 [tool.mypy]
 strict = true
 install_types = true
+exclude = ["examples/"]
 
 [tool.ruff]
 line-length = 120

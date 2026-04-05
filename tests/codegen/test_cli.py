@@ -170,6 +170,25 @@ def test_generated_code_with_dynamic_types(tmp_path: Path, parser: SchemaParser)
     assert "model: MyModel = Field(...)" in code
 
 
+def test_generated_code_with_dynamic_types_in_subdirectory(
+    tmp_path: Path, parser: SchemaParser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subdir = tmp_path / "src"
+    subdir.mkdir()
+    module_file = subdir / "dataset.py"
+    module_file.write_text(
+        "class Dataset:\n    def __init__(self):\n        pass\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    schema = f"dataset: {module_file}:Dataset\n"
+    _, code = _generate(schema, tmp_path, parser)
+
+    assert "from src.dataset import Dataset" in code
+    assert "dataset: Dataset = Field(...)" in code
+
+
 def test_generated_code_supports_inheritance(tmp_path: Path, parser: SchemaParser) -> None:
     schema = """
 schema:

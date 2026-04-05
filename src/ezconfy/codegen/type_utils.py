@@ -46,7 +46,13 @@ def _resolve_dynamic_import(module_name: str, type_name: str) -> tuple[str, str]
     file = getattr(module, "__file__", None)
     if file is None:
         return None
-    return (Path(file).resolve().stem, type_name)
+    file_path = Path(file).resolve()
+    try:
+        rel_path = file_path.relative_to(Path.cwd())
+    except ValueError:
+        return (file_path.stem, type_name)
+    module_path = ".".join(rel_path.with_suffix("").parts)
+    return (module_path, type_name)
 
 
 def resolve_type(annotation: type[Any]) -> tuple[str, set[tuple[str, str]]]:

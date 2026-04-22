@@ -327,6 +327,36 @@ wd: 0.0001
     print(type(cfg.wd))
 
 
+def test_nested_dict_cast_to_model_via_placeholder(tmp_path: Path) -> None:
+    module_content = """
+class Network:
+    def __init__(self, cfg):
+        self.num_classes = cfg.num_classes
+"""
+    module_file = _write_temp_yaml(tmp_path, module_content, "network.py")
+
+    schema = f"""
+schema:
+    net_config:
+        num_classes: int
+    model: {module_file}:Network
+"""
+    config = f"""
+net_config:
+    num_classes: 10
+model:
+    _target_type_: {module_file}:Network
+    _init_args_:
+        cfg: ${{net_config}}
+"""
+    schema_file = _write_temp_yaml(tmp_path, schema, "schema.yaml")
+    config_file = _write_temp_yaml(tmp_path, config, "config.yaml")
+
+    cfg: Any = ConfigBuilder.from_files(config_paths=config_file, schema_path=schema_file)
+
+    assert cfg.model.num_classes == 10
+
+
 def test_schema_aware_type_casting(tmp_path: Path) -> None:
     """Schema types should be cast during instantiation: scalars and placeholders."""
     module_content = """

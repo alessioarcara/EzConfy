@@ -8,7 +8,6 @@
 
 <p align="center">
   <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/v/ezconfy?color=blue&label=PyPI" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/ezconfy/"><img src="https://img.shields.io/pypi/pyversions/ezconfy" alt="Python versions"></a>
   <a href="https://github.com/alessioarcara/EzConfy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/alessioarcara/EzConfy" alt="License"></a>
 </p>
 

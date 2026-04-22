@@ -207,9 +207,10 @@ class Instantiator:
                     raise InstantiationError(f"Failed to instantiate {error_context}: {e}") from e
 
             field_types = self._get_model_field_types(schema_type)
-            return {
+            result = {
                 k: self._instantiate_obj(v, resolved_config, schema_type=field_types.get(k)) for k, v in node.items()
             }
+            return self._try_cast(result, schema_type)
 
         if isinstance(node, list):
             elem_type = self._get_list_element_type(schema_type)
@@ -244,6 +245,8 @@ class Instantiator:
         if schema_type is None:
             return value
         try:
+            if isinstance(schema_type, type) and issubclass(schema_type, BaseModel):
+                return schema_type.model_validate(value)
             adapter = TypeAdapter(schema_type, config=ConfigDict(arbitrary_types_allowed=True))
             return adapter.validate_python(value)
         except Exception:

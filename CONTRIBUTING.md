@@ -1,4 +1,4 @@
-# Contributing to EasyConfig
+# Contributing to EzConfy
 
 Thank you for your interest in contributing! This guide will get you set up quickly.
 

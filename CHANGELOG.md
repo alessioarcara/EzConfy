@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-06-07
+
+### Fixed
+- Custom types under `types:` used only as a parent via `<` inheritance are now emitted in the generated code
+
 ## [0.1.12] - 2026-05-03
 
 ### Changed

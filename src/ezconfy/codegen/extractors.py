@@ -24,9 +24,13 @@ class ModelExtractor(Extractor):
         self.results: list[type[BaseModel]] = []
 
     def children(self, node: type[Any]) -> Iterable[type[Any]]:
-        if is_pydantic_model(node):
-            return (f.annotation for f in node.model_fields.values() if f.annotation is not None)
-        return []
+        if not is_pydantic_model(node):
+            return []
+        children = [f.annotation for f in node.model_fields.values() if f.annotation is not None]
+        base = node.__bases__[0]
+        if is_pydantic_model(base):
+            children.append(base)
+        return children
 
     def extract(self, node: type[Any]) -> None:
         if is_pydantic_model(node):

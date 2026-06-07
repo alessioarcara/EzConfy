@@ -203,3 +203,28 @@ schema:
     assert "class B(A):" in code
     assert "x: str = Field(...)" in code
     assert "y: int = Field(...)" in code
+
+
+def test_generated_code_emits_parent_type_used_only_via_inheritance(
+    tmp_path: Path, parser: SchemaParser
+) -> None:
+    schema = """
+types:
+    EnvSpec:
+        env_name: str
+schema:
+    collection < EnvSpec:
+        num_envs: int
+    evaluation < EnvSpec:
+        num_episodes: int
+    """
+    _, code = _generate(schema, tmp_path, parser)
+
+    assert "class EnvSpec(BaseModel):" in code
+    assert "class Collection(EnvSpec):" in code
+    assert "class Evaluation(EnvSpec):" in code
+    # parent emitted before children
+    assert code.index("class EnvSpec(") < code.index("class Collection(")
+    assert code.index("class EnvSpec(") < code.index("class Evaluation(")
+    # parent fields not duplicated in children
+    assert code.count("env_name: str = Field(...)") == 1

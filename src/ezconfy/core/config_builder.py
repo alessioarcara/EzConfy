@@ -37,8 +37,14 @@ class ConfigBuilder:
         self,
         config_paths: PathLike | list[PathLike],
         overrides: dict[str, Any] | None = None,
-    ) -> BaseModel | dict[str, Any]:
-        """Build configuration from one or more YAML files using this builder's schema."""
+        return_raw_config: bool = False,
+    ) -> BaseModel | dict[str, Any] | tuple[BaseModel | dict[str, Any], dict[str, Any]]:
+        """Build configuration from one or more YAML files using this builder's schema.
+
+        When ``return_raw_config`` is True, return a tuple of
+        ``(built_config, raw_config)`` where ``raw_config`` is the merged YAML
+        dict before instantiation.
+        """
         paths = [Path(p) for p in (config_paths if isinstance(config_paths, list) else [config_paths])]
         if not paths:
             raise ValueError("No configuration paths provided.")
@@ -54,18 +60,23 @@ class ConfigBuilder:
 
         instantiated = self.instantiator(merged_config, schema_model=self.schema_model)
 
+        built: BaseModel | dict[str, Any]
         if self.schema_model is None:
-            return instantiated
+            built = instantiated
+        else:
+            try:
+                built = self.schema_model.model_validate(instantiated)
+            except ValidationError as e:
+                field_errors = "; ".join(
+                    f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()
+                )
+                msg = f"Configuration validation failed ({e.error_count()} error(s)): {field_errors}"
+                logger.error(msg)
+                raise InstantiationError(msg) from e
 
-        try:
-            return self.schema_model.model_validate(instantiated)
-        except ValidationError as e:
-            field_errors = "; ".join(
-                f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()
-            )
-            msg = f"Configuration validation failed ({e.error_count()} error(s)): {field_errors}"
-            logger.error(msg)
-            raise InstantiationError(msg) from e
+        if return_raw_config:
+            return built, merged_config
+        return built
 
     @classmethod
     def from_files(
@@ -73,8 +84,13 @@ class ConfigBuilder:
         config_paths: PathLike | list[PathLike],
         overrides: dict[str, Any] | None = None,
         schema_path: PathLike | None = None,
-    ) -> BaseModel | dict[str, Any]:
-        """Build configuration from one or more YAML files with optional overrides and schema."""
+        return_raw_config: bool = False,
+    ) -> BaseModel | dict[str, Any] | tuple[BaseModel | dict[str, Any], dict[str, Any]]:
+        """Build configuration from one or more YAML files with optional overrides and schema.
+
+        When ``return_raw_config`` is True, return a tuple of ``(built_config,
+        raw_config)``.
+        """
         schema_yaml: str | None = None
         if schema_path:
             try:
@@ -84,4 +100,4 @@ class ConfigBuilder:
                 raise
 
         builder = cls(schema_yaml=schema_yaml)
-        return builder.build(config_paths, overrides=overrides)
+        return builder.build(config_paths, overrides=overrides, return_raw_config=return_raw_config)

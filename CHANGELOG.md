@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-18
+
 ### Added
 - `return_raw_config` option on `ConfigBuilder.build` and `ConfigBuilder.from_files` to also return the merged raw YAML dict before instantiation as `(built_config, raw_config)`
 

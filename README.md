@@ -198,7 +198,7 @@ callbacks:
 Generate a Pydantic model file from a schema for editor autocompletion and static analysis:
 
 ```bash
-ezconfy generate schema.yaml -o models.py
+ezconfy schema.yaml -o models.py
 ```
 
 ## Documentation

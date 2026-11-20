@@ -7,7 +7,7 @@ EzConfy can generate standalone Python files with Pydantic model definitions fro
 ## Usage
 
 ```bash
-ezconfy generate schema.yaml -o models.py
+ezconfy schema.yaml -o models.py
 ```
 
 This reads `schema.yaml` and writes a Python file with `BaseModel` classes matching the schema.
@@ -112,7 +112,7 @@ This reads `schema.yaml` and writes a Python file with `BaseModel` classes match
 A typical workflow:
 
 1. Define or update `schema.yaml`
-2. Run `ezconfy generate schema.yaml -o config_models.py`
+2. Run `ezconfy schema.yaml -o config_models.py`
 3. Import the generated models for type hints:
 
 ```python
